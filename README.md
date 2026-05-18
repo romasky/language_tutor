@@ -15,6 +15,7 @@ Learn any language through natural conversation, grammar practice, and vocabular
 | 📚 **Vocabulary** | `/word` — definition, examples, memory tips in your native language |
 | ✍️ **Grammar coach** | Corrects your sentences with explanations, tracks conversation history |
 | 💬 **Conversation** | Free-form chat practice with corrections and follow-up questions |
+| 🧩 **AI Quiz** | `/quiz` — exactly 20 AI-generated questions at your level, 4-button answers, full wrong-answer analysis |
 | 📊 **Progress tracking** | XP system, streak counter, level display |
 | 🔒 **Self-hosted** | Your data stays on your server, no third-party SaaS |
 
@@ -87,7 +88,7 @@ curl "https://api.telegram.org/bot$TELEGRAM_BOT_TOKEN/setWebhook?url=YOUR_WEBHOO
 /start     Start learning — language selection + level assessment
 /word      Look up any word:  /word ambitious
 /talk      Conversation practice session
-/quiz      Quiz on your saved vocabulary
+/quiz      20-question AI quiz at your level, with result analysis
 /progress  Your XP, streak, and current level
 /level     Change your learning level (A1 → C1)
 /help      Command reference
@@ -105,7 +106,7 @@ language-tutor-bot/
 │   └── default.conf            — reverse proxy config
 ├── n8n/
 │   └── workflows/
-│       └── 01_webhook_router.json   — main bot workflow (~80 nodes)
+│       └── 01_webhook_router.json   — main bot workflow (~100 nodes)
 ├── db/
 │   └── migrations/             — PostgreSQL schema (additive only)
 ├── prompts/                    — Claude system prompts (markdown)
@@ -146,11 +147,11 @@ Full documentation is in the [GitHub Wiki](../../wiki):
 
 ## 🛣 Roadmap
 
+- [x] `/quiz` — AI-generated 20-question quiz with 4-button answers and result analysis
 - [ ] Voice dictation (Whisper STT)
 - [ ] Daily lesson scheduler with flashcards
 - [ ] Word pronunciation audio (ElevenLabs)
 - [ ] SM-2 spaced repetition for vocabulary
-- [ ] `/quiz` command
 - [ ] Admin dashboard
 
 ---
