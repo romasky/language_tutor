@@ -1,0 +1,188 @@
+{
+  "name": "02 - Vocabulary",
+  "nodes": [
+    {
+      "id": "a1b2c3d4-0002-0002-0002-000000000001",
+      "name": "Execute Workflow Trigger",
+      "type": "n8n-nodes-base.executeWorkflowTrigger",
+      "typeVersion": 1,
+      "position": [240, 300],
+      "parameters": {}
+    },
+    {
+      "id": "a1b2c3d4-0002-0002-0002-000000000002",
+      "name": "Extract Word",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3,
+      "position": [460, 300],
+      "parameters": {
+        "mode": "manual",
+        "duplicateItem": false,
+        "assignments": {
+          "assignments": [
+            {
+              "id": "word",
+              "name": "word",
+              "value": "={{ $json.message.text.startsWith('/word ') ? $json.message.text.slice(6).trim() : $json.message.text.trim() }}",
+              "type": "string"
+            },
+            {
+              "id": "userId",
+              "name": "userId",
+              "value": "={{ $json.message.from.id }}",
+              "type": "number"
+            },
+            {
+              "id": "userLevel",
+              "name": "userLevel",
+              "value": "={{ $json.userLevel || 'A1' }}",
+              "type": "string"
+            }
+          ]
+        }
+      }
+    },
+    {
+      "id": "a1b2c3d4-0002-0002-0002-000000000003",
+      "name": "Load Vocab Prompt",
+      "type": "n8n-nodes-base.readBinaryFile",
+      "typeVersion": 1,
+      "position": [680, 300],
+      "parameters": {
+        "filePath": "/home/node/.n8n/prompts/vocabulary.md"
+      }
+    },
+    {
+      "id": "a1b2c3d4-0002-0002-0002-000000000004",
+      "name": "Claude API",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4,
+      "position": [900, 300],
+      "parameters": {
+        "method": "POST",
+        "url": "https://api.anthropic.com/v1/messages",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            { "name": "x-api-key", "value": "={{ $env.ANTHROPIC_API_KEY }}" },
+            { "name": "anthropic-version", "value": "2023-06-01" },
+            { "name": "content-type", "value": "application/json" }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ model: 'claude-sonnet-4-20250514', max_tokens: 400, system: Buffer.from($json.data, 'base64').toString('utf8').replace('{{level}}', $('Extract Word').item.json.userLevel), messages: [{ role: 'user', content: $('Extract Word').item.json.word }] }) }}"
+      }
+    },
+    {
+      "id": "a1b2c3d4-0002-0002-0002-000000000005",
+      "name": "Save to Vocabulary",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2,
+      "position": [1120, 160],
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "INSERT INTO vocabulary (user_id, word, added_at)\nVALUES ({{ $('Extract Word').item.json.userId }}, '{{ $('Extract Word').item.json.word }}', NOW())\nON CONFLICT DO NOTHING;"
+      },
+      "credentials": {
+        "postgres": { "id": "2", "name": "PostgreSQL" }
+      }
+    },
+    {
+      "id": "a1b2c3d4-0002-0002-0002-000000000006",
+      "name": "Send to Telegram",
+      "type": "n8n-nodes-base.telegram",
+      "typeVersion": 1,
+      "position": [1120, 300],
+      "parameters": {
+        "operation": "sendMessage",
+        "chatId": "={{ $('Extract Word').item.json.userId }}",
+        "text": "={{ $json.content[0].text }}",
+        "additionalFields": {
+          "parse_mode": "Markdown"
+        }
+      },
+      "credentials": {
+        "telegramApi": { "id": "1", "name": "Telegram Bot" }
+      }
+    },
+    {
+      "id": "a1b2c3d4-0002-0002-0002-000000000007",
+      "name": "ElevenLabs TTS",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4,
+      "position": [1120, 460],
+      "parameters": {
+        "method": "POST",
+        "url": "=https://api.elevenlabs.io/v1/text-to-speech/{{ $env.ELEVENLABS_VOICE_ID }}",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            { "name": "xi-api-key", "value": "={{ $env.ELEVENLABS_API_KEY }}" },
+            { "name": "content-type", "value": "application/json" }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ text: $('Extract Word').item.json.word, model_id: 'eleven_multilingual_v2', voice_settings: { stability: 0.5, similarity_boost: 0.75 } }) }}",
+        "options": {
+          "response": {
+            "response": {
+              "responseFormat": "file"
+            }
+          }
+        }
+      }
+    },
+    {
+      "id": "a1b2c3d4-0002-0002-0002-000000000008",
+      "name": "Send Audio",
+      "type": "n8n-nodes-base.telegram",
+      "typeVersion": 1,
+      "position": [1340, 460],
+      "parameters": {
+        "operation": "sendAudio",
+        "chatId": "={{ $('Extract Word').item.json.userId }}",
+        "binaryData": true,
+        "binaryPropertyName": "data",
+        "additionalFields": {
+          "caption": "={{ $('Extract Word').item.json.word }}"
+        }
+      },
+      "credentials": {
+        "telegramApi": { "id": "1", "name": "Telegram Bot" }
+      }
+    }
+  ],
+  "connections": {
+    "Execute Workflow Trigger": {
+      "main": [[{ "node": "Extract Word", "type": "main", "index": 0 }]]
+    },
+    "Extract Word": {
+      "main": [[{ "node": "Load Vocab Prompt", "type": "main", "index": 0 }]]
+    },
+    "Load Vocab Prompt": {
+      "main": [[
+        { "node": "Claude API", "type": "main", "index": 0 },
+        { "node": "ElevenLabs TTS", "type": "main", "index": 0 }
+      ]]
+    },
+    "Claude API": {
+      "main": [[
+        { "node": "Send to Telegram", "type": "main", "index": 0 },
+        { "node": "Save to Vocabulary", "type": "main", "index": 0 }
+      ]]
+    },
+    "ElevenLabs TTS": {
+      "main": [[{ "node": "Send Audio", "type": "main", "index": 0 }]]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "meta": {
+    "notes": "Vocabulary workflow: explains word via Claude, saves to DB, sends TTS pronunciation via ElevenLabs."
+  }
+}

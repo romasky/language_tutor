@@ -1,0 +1,77 @@
+# ── Secrets & environment ──────────────────────────────────────────────────────
+.env
+.env.local
+.env.*.local
+*.secret
+secrets/
+credentials/
+
+# ── n8n runtime data (contains credentials, execution history) ─────────────────
+n8n_data/
+.n8n/
+
+# ── Database volumes ───────────────────────────────────────────────────────────
+postgres_data/
+redis_data/
+
+# ── SSL / TLS certificates ─────────────────────────────────────────────────────
+nginx/certs/
+ssl/
+*.pem
+*.key
+*.crt
+*.csr
+*.p12
+*.pfx
+
+# ── Project-specific sensitive files ──────────────────────────────────────────
+task.md
+memory.md
+*.cookies.txt
+
+# ── Node / npm ─────────────────────────────────────────────────────────────────
+node_modules/
+npm-debug.log*
+yarn-error.log*
+package-lock.json
+
+# ── Python ─────────────────────────────────────────────────────────────────────
+__pycache__/
+*.pyc
+*.pyo
+.venv/
+venv/
+*.egg-info/
+
+# ── OS ─────────────────────────────────────────────────────────────────────────
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# ── Logs ───────────────────────────────────────────────────────────────────────
+*.log
+logs/
+
+# ── Temp / build ───────────────────────────────────────────────────────────────
+tmp/
+temp/
+dist/
+build/
+*.tmp
+*.bak
+*.swp
+
+# ── IDE ────────────────────────────────────────────────────────────────────────
+.vscode/
+.idea/
+*.iml
+
+# ── Docker volumes mounted locally ─────────────────────────────────────────────
+volumes/
+
+# ── Audio / media uploads ──────────────────────────────────────────────────────
+uploads/
+audio/
+*.mp3
+*.ogg
+*.wav

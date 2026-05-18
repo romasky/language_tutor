@@ -1,0 +1,172 @@
+{
+  "name": "05 - Dictation (Whisper STT)",
+  "nodes": [
+    {
+      "id": "a1b2c3d4-0005-0005-0005-000000000001",
+      "name": "Input",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3,
+      "position": [240, 300],
+      "parameters": {
+        "mode": "manual",
+        "assignments": {
+          "assignments": [
+            {
+              "id": "fileId",
+              "name": "fileId",
+              "value": "={{ $json.message.voice.file_id }}",
+              "type": "string"
+            },
+            {
+              "id": "userId",
+              "name": "userId",
+              "value": "={{ $json.message.from.id }}",
+              "type": "number"
+            },
+            {
+              "id": "userLevel",
+              "name": "userLevel",
+              "value": "={{ $json.userLevel || 'A1' }}",
+              "type": "string"
+            }
+          ]
+        }
+      }
+    },
+    {
+      "id": "a1b2c3d4-0005-0005-0005-000000000002",
+      "name": "Get File Path",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4,
+      "position": [460, 300],
+      "parameters": {
+        "method": "GET",
+        "url": "=https://api.telegram.org/bot{{ $env.TELEGRAM_BOT_TOKEN }}/getFile?file_id={{ $('Input').item.json.fileId }}"
+      }
+    },
+    {
+      "id": "a1b2c3d4-0005-0005-0005-000000000003",
+      "name": "Download Voice File",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4,
+      "position": [680, 300],
+      "parameters": {
+        "method": "GET",
+        "url": "=https://api.telegram.org/file/bot{{ $env.TELEGRAM_BOT_TOKEN }}/{{ $json.result.file_path }}",
+        "options": {
+          "response": {
+            "response": {
+              "responseFormat": "file"
+            }
+          }
+        }
+      }
+    },
+    {
+      "id": "a1b2c3d4-0005-0005-0005-000000000004",
+      "name": "Whisper STT",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4,
+      "position": [900, 300],
+      "parameters": {
+        "method": "POST",
+        "url": "https://api.openai.com/v1/audio/transcriptions",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            { "name": "Authorization", "value": "=Bearer {{ $env.OPENAI_API_KEY }}" }
+          ]
+        },
+        "sendBody": true,
+        "contentType": "multipart-form-data",
+        "bodyParameters": {
+          "parameters": [
+            { "name": "model", "value": "whisper-1" },
+            { "name": "language", "value": "en" },
+            { "name": "file", "parameterType": "formBinaryData", "inputDataFieldName": "data" }
+          ]
+        }
+      }
+    },
+    {
+      "id": "a1b2c3d4-0005-0005-0005-000000000005",
+      "name": "Grade Transcription",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4,
+      "position": [1120, 300],
+      "parameters": {
+        "method": "POST",
+        "url": "https://api.anthropic.com/v1/messages",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            { "name": "x-api-key", "value": "={{ $env.ANTHROPIC_API_KEY }}" },
+            { "name": "anthropic-version", "value": "2023-06-01" },
+            { "name": "content-type", "value": "application/json" }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ model: 'claude-sonnet-4-20250514', max_tokens: 300, system: 'You are an English dictation grader. The student\\'s level: ' + $('Input').item.json.userLevel + '.\\nYou will receive a transcription of what the student said. Evaluate pronunciation and fluency.\\nRespond with:\\n1. What you heard: [transcription]\\n2. Accuracy feedback (1-2 sentences)\\n3. Score: X/100\\n4. One improvement tip.', messages: [{ role: 'user', content: 'Student said: ' + $json.text }] }) }}"
+      }
+    },
+    {
+      "id": "a1b2c3d4-0005-0005-0005-000000000006",
+      "name": "Log Dictation Session",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2,
+      "position": [1340, 160],
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "INSERT INTO sessions (user_id, type, details, created_at)\nVALUES ({{ $('Input').item.json.userId }}, 'dictation', '{\"transcription\": \"{{ $('Whisper STT').item.json.text }}\"}', NOW());"
+      },
+      "credentials": {
+        "postgres": { "id": "2", "name": "PostgreSQL" }
+      }
+    },
+    {
+      "id": "a1b2c3d4-0005-0005-0005-000000000007",
+      "name": "Send Feedback",
+      "type": "n8n-nodes-base.telegram",
+      "typeVersion": 1,
+      "position": [1340, 300],
+      "parameters": {
+        "operation": "sendMessage",
+        "chatId": "={{ $('Input').item.json.userId }}",
+        "text": "={{ $json.content[0].text }}",
+        "additionalFields": {
+          "parse_mode": "Markdown"
+        }
+      },
+      "credentials": {
+        "telegramApi": { "id": "1", "name": "Telegram Bot" }
+      }
+    }
+  ],
+  "connections": {
+    "Input": {
+      "main": [[{ "node": "Get File Path", "type": "main", "index": 0 }]]
+    },
+    "Get File Path": {
+      "main": [[{ "node": "Download Voice File", "type": "main", "index": 0 }]]
+    },
+    "Download Voice File": {
+      "main": [[{ "node": "Whisper STT", "type": "main", "index": 0 }]]
+    },
+    "Whisper STT": {
+      "main": [[{ "node": "Grade Transcription", "type": "main", "index": 0 }]]
+    },
+    "Grade Transcription": {
+      "main": [[
+        { "node": "Send Feedback", "type": "main", "index": 0 },
+        { "node": "Log Dictation Session", "type": "main", "index": 0 }
+      ]]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "meta": {
+    "notes": "Dictation workflow: downloads voice from Telegram, transcribes via Whisper, grades via Claude."
+  }
+}

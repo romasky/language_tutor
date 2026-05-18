@@ -1,0 +1,128 @@
+{
+  "name": "04 - Conversation",
+  "nodes": [
+    {
+      "id": "a1b2c3d4-0004-0004-0004-000000000001",
+      "name": "Input",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3,
+      "position": [240, 300],
+      "parameters": {
+        "mode": "manual",
+        "assignments": {
+          "assignments": [
+            {
+              "id": "text",
+              "name": "text",
+              "value": "={{ $json.message.text.startsWith('/talk') ? $json.message.text.replace('/talk', '').trim() || 'Hello! Let\\'s talk.' : $json.message.text }}",
+              "type": "string"
+            },
+            {
+              "id": "userId",
+              "name": "userId",
+              "value": "={{ $json.message.from.id }}",
+              "type": "number"
+            },
+            {
+              "id": "userLevel",
+              "name": "userLevel",
+              "value": "={{ $json.userLevel || 'A1' }}",
+              "type": "string"
+            }
+          ]
+        }
+      }
+    },
+    {
+      "id": "a1b2c3d4-0004-0004-0004-000000000002",
+      "name": "Set Conversation Mode",
+      "type": "n8n-nodes-base.redis",
+      "typeVersion": 1,
+      "position": [460, 160],
+      "parameters": {
+        "operation": "set",
+        "key": "=session:{{ $('Input').item.json.userId }}",
+        "value": "conversation",
+        "expire": true,
+        "ttl": 1800
+      },
+      "credentials": {
+        "redis": { "id": "3", "name": "Redis" }
+      }
+    },
+    {
+      "id": "a1b2c3d4-0004-0004-0004-000000000003",
+      "name": "Get Topic from Redis",
+      "type": "n8n-nodes-base.redis",
+      "typeVersion": 1,
+      "position": [460, 300],
+      "parameters": {
+        "operation": "get",
+        "key": "=topic:{{ $('Input').item.json.userId }}"
+      },
+      "credentials": {
+        "redis": { "id": "3", "name": "Redis" }
+      }
+    },
+    {
+      "id": "a1b2c3d4-0004-0004-0004-000000000004",
+      "name": "Claude Conversation",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4,
+      "position": [680, 300],
+      "parameters": {
+        "method": "POST",
+        "url": "https://api.anthropic.com/v1/messages",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            { "name": "x-api-key", "value": "={{ $env.ANTHROPIC_API_KEY }}" },
+            { "name": "anthropic-version", "value": "2023-06-01" },
+            { "name": "content-type", "value": "application/json" }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ model: 'claude-sonnet-4-20250514', max_tokens: 300, system: 'You are a friendly English conversation partner.\\nThe student\\'s level: ' + $('Input').item.json.userLevel + '.\\nCurrent topic: ' + ($('Get Topic from Redis').item.json.value || 'general conversation') + '.\\n\\nRules:\\n- Respond naturally as a conversation partner, not as a teacher.\\n- Keep your messages to 2-4 sentences max.\\n- If the student makes a grammar mistake, gently note it in parentheses at the end: (tip: \\'was\\' → \\'were\\').\\n- Occasionally ask follow-up questions to keep the conversation going.\\n- Never break character or switch to Russian unless the student is completely stuck.', messages: [{ role: 'user', content: $('Input').item.json.text }] }) }}"
+      }
+    },
+    {
+      "id": "a1b2c3d4-0004-0004-0004-000000000005",
+      "name": "Send Reply",
+      "type": "n8n-nodes-base.telegram",
+      "typeVersion": 1,
+      "position": [900, 300],
+      "parameters": {
+        "operation": "sendMessage",
+        "chatId": "={{ $('Input').item.json.userId }}",
+        "text": "={{ $json.content[0].text }}",
+        "additionalFields": {
+          "parse_mode": "Markdown"
+        }
+      },
+      "credentials": {
+        "telegramApi": { "id": "1", "name": "Telegram Bot" }
+      }
+    }
+  ],
+  "connections": {
+    "Input": {
+      "main": [[
+        { "node": "Set Conversation Mode", "type": "main", "index": 0 },
+        { "node": "Get Topic from Redis", "type": "main", "index": 0 }
+      ]]
+    },
+    "Get Topic from Redis": {
+      "main": [[{ "node": "Claude Conversation", "type": "main", "index": 0 }]]
+    },
+    "Claude Conversation": {
+      "main": [[{ "node": "Send Reply", "type": "main", "index": 0 }]]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "meta": {
+    "notes": "Conversation mode: sets Redis session to 'conversation' with 30-min TTL, responds via Claude."
+  }
+}

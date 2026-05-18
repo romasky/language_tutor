@@ -1,0 +1,108 @@
+{
+  "name": "03 - Grammar",
+  "nodes": [
+    {
+      "id": "a1b2c3d4-0003-0003-0003-000000000001",
+      "name": "Input",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3,
+      "position": [240, 300],
+      "parameters": {
+        "mode": "manual",
+        "assignments": {
+          "assignments": [
+            {
+              "id": "text",
+              "name": "text",
+              "value": "={{ $json.message.text }}",
+              "type": "string"
+            },
+            {
+              "id": "userId",
+              "name": "userId",
+              "value": "={{ $json.message.from.id }}",
+              "type": "number"
+            },
+            {
+              "id": "userLevel",
+              "name": "userLevel",
+              "value": "={{ $json.userLevel || 'A1' }}",
+              "type": "string"
+            }
+          ]
+        }
+      }
+    },
+    {
+      "id": "a1b2c3d4-0003-0003-0003-000000000002",
+      "name": "Claude Grammar Check",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4,
+      "position": [460, 300],
+      "parameters": {
+        "method": "POST",
+        "url": "https://api.anthropic.com/v1/messages",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            { "name": "x-api-key", "value": "={{ $env.ANTHROPIC_API_KEY }}" },
+            { "name": "anthropic-version", "value": "2023-06-01" },
+            { "name": "content-type", "value": "application/json" }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ model: 'claude-sonnet-4-20250514', max_tokens: 400, system: 'You are an English grammar coach.\\nThe student\\'s level: ' + $('Input').item.json.userLevel + '.\\n\\nWhen the student sends a sentence:\\n1. If correct: confirm briefly (\\'Perfect! ✓\\') and explain what grammar rule they used well.\\n2. If incorrect: show the corrected sentence first, then explain the mistake in 1-2 sentences.\\n3. Always end with a short follow-up exercise (\\'Now try: ...\\').\\n\\nFormat corrections as:\\n❌ [original]\\n✅ [corrected]\\n💡 [explanation]', messages: [{ role: 'user', content: $('Input').item.json.text }] }) }}"
+      }
+    },
+    {
+      "id": "a1b2c3d4-0003-0003-0003-000000000003",
+      "name": "Log Session",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2,
+      "position": [680, 160],
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "INSERT INTO sessions (user_id, type, score, details, created_at)\nVALUES ({{ $('Input').item.json.userId }}, 'grammar', NULL, '{\"input\": \"{{ $('Input').item.json.text }}\"}', NOW());"
+      },
+      "credentials": {
+        "postgres": { "id": "2", "name": "PostgreSQL" }
+      }
+    },
+    {
+      "id": "a1b2c3d4-0003-0003-0003-000000000004",
+      "name": "Send Grammar Feedback",
+      "type": "n8n-nodes-base.telegram",
+      "typeVersion": 1,
+      "position": [680, 300],
+      "parameters": {
+        "operation": "sendMessage",
+        "chatId": "={{ $('Input').item.json.userId }}",
+        "text": "={{ $json.content[0].text }}",
+        "additionalFields": {
+          "parse_mode": "Markdown"
+        }
+      },
+      "credentials": {
+        "telegramApi": { "id": "1", "name": "Telegram Bot" }
+      }
+    }
+  ],
+  "connections": {
+    "Input": {
+      "main": [[{ "node": "Claude Grammar Check", "type": "main", "index": 0 }]]
+    },
+    "Claude Grammar Check": {
+      "main": [[
+        { "node": "Send Grammar Feedback", "type": "main", "index": 0 },
+        { "node": "Log Session", "type": "main", "index": 0 }
+      ]]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "meta": {
+    "notes": "Grammar check workflow: sends sentence to Claude for correction, logs session to DB."
+  }
+}
