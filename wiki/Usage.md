@@ -50,6 +50,22 @@ If you close the bot mid-quiz and return, it offers to **continue** from where y
 
 Duplicate button taps on already-answered questions are silently ignored.
 
+### `/dictation`
+
+Practice speaking by reading sentences aloud. The bot:
+1. Generates a sentence at your level in the target language
+2. Shows it as text — read it and record a voice message
+3. Groq Whisper transcribes your voice
+4. Claude compares your transcription word-by-word and scores it (0–100%)
+5. Shows missed words, extra words, and encouragement
+6. Awards 15 XP for completing the exercise
+
+Tap **🔄 Next** for a new sentence or **📋 Menu** to go back.
+
+You can also start with the **🎤 Диктант** button in the main menu, or type `/dictation`.
+
+If you send a voice message outside of a dictation session, the bot ignores it (no dictation session active).
+
 ### `/progress`
 
 Shows your current stats:

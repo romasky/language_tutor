@@ -16,6 +16,7 @@ Learn any language through natural conversation, grammar practice, and vocabular
 | ✍️ **Grammar coach** | Corrects your sentences with explanations, tracks conversation history |
 | 💬 **Conversation** | Free-form chat practice with corrections and follow-up questions |
 | 🧩 **AI Quiz** | `/quiz` — exactly 20 AI-generated questions at your level, 4-button answers, full wrong-answer analysis |
+| 🎤 **Voice Dictation** | `/dictation` — read a sentence aloud, Groq Whisper transcribes it, Claude scores word-by-word and gives feedback |
 | 📊 **Progress tracking** | XP system, streak counter, level display |
 | 🔒 **Self-hosted** | Your data stays on your server, no third-party SaaS |
 
@@ -25,7 +26,7 @@ Learn any language through natural conversation, grammar practice, and vocabular
 
 ```
 Telegram  ──webhook──▶  n8n (Docker)  ──▶  Claude API (Anthropic)
-                              │
+                              │               Groq Whisper (STT)
                     ┌─────────┴──────────┐
                  PostgreSQL            Redis
                (users, vocab,       (sessions,
@@ -34,6 +35,7 @@ Telegram  ──webhook──▶  n8n (Docker)  ──▶  Claude API (Anthropic
 
 - **[n8n](https://n8n.io)** — no-code workflow engine, all bot logic as visual flows
 - **[Claude API](https://anthropic.com)** — Haiku model for fast, cheap AI responses
+- **[Groq Whisper](https://console.groq.com)** — free, fast Speech-to-Text for voice dictation
 - **[DigitalOcean](https://digitalocean.com)** — $6/mo Droplet is enough
 - **[Cloudflare Tunnel](https://developers.cloudflare.com/cloudflare-one/connections/connect-networks/)** — free HTTPS webhook, no domain needed
 
@@ -85,13 +87,14 @@ curl "https://api.telegram.org/bot$TELEGRAM_BOT_TOKEN/setWebhook?url=YOUR_WEBHOO
 ## 🤖 Bot Commands
 
 ```
-/start     Start learning — language selection + level assessment
-/word      Look up any word:  /word ambitious
-/talk      Conversation practice session
-/quiz      20-question AI quiz at your level, with result analysis
-/progress  Your XP, streak, and current level
-/level     Change your learning level (A1 → C1)
-/help      Command reference
+/start      Start learning — language selection + level assessment
+/word       Look up any word:  /word ambitious
+/talk       Conversation practice session
+/quiz       20-question AI quiz at your level, with result analysis
+/dictation  Voice dictation exercise — read a sentence aloud
+/progress   Your XP, streak, and current level
+/level      Change your learning level (A1 → C1)
+/help       Command reference
 ```
 
 ---
@@ -106,7 +109,7 @@ language-tutor-bot/
 │   └── default.conf            — reverse proxy config
 ├── n8n/
 │   └── workflows/
-│       └── 01_webhook_router.json   — main bot workflow (~100 nodes)
+│       └── 01_webhook_router.json   — main bot workflow (~130 nodes)
 ├── db/
 │   └── migrations/             — PostgreSQL schema (additive only)
 ├── prompts/                    — Claude system prompts (markdown)
@@ -125,6 +128,7 @@ Copy `.env.example` to `.env` and fill in all values:
 |---|---|
 | `TELEGRAM_BOT_TOKEN` | From [@BotFather](https://t.me/BotFather) |
 | `ANTHROPIC_API_KEY` | From [Anthropic Console](https://console.anthropic.com) |
+| `GROQ_API_KEY` | From [Groq Console](https://console.groq.com) — free, for voice dictation |
 | `N8N_ENCRYPTION_KEY` | Run `openssl rand -hex 32` |
 | `POSTGRES_PASSWORD` | Choose a strong password |
 | `N8N_BASIC_AUTH_USER` | n8n UI login |
@@ -148,7 +152,7 @@ Full documentation is in the [GitHub Wiki](../../wiki):
 ## 🛣 Roadmap
 
 - [x] `/quiz` — AI-generated 20-question quiz with 4-button answers and result analysis
-- [ ] Voice dictation (Whisper STT)
+- [x] `/dictation` — voice dictation via Groq Whisper, word-level scoring, Claude feedback
 - [ ] Daily lesson scheduler with flashcards
 - [ ] Word pronunciation audio (ElevenLabs)
 - [ ] SM-2 spaced repetition for vocabulary

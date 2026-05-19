@@ -23,10 +23,13 @@ run_suite() {
 
 DIR="$(cd "$(dirname "$0")" && pwd)"
 
-run_suite "Unit: Router"      "$DIR/unit_router.test.js"
-run_suite "Unit: Onboarding"  "$DIR/unit_onboarding.test.js"
-run_suite "Integration: DB+Redis" "$DIR/integration.test.js"
+run_suite "Unit: Router"           "$DIR/unit_router.test.js"
+run_suite "Unit: Onboarding"       "$DIR/unit_onboarding.test.js"
+run_suite "Unit: Dictation"        "$DIR/unit_dictation.test.js"
+run_suite "Integration: DB+Redis"  "$DIR/integration.test.js"
+run_suite "Integration: Dictation" "$DIR/integration_dictation.test.js"
 run_suite "E2E: Full webhook flow" "$DIR/e2e.test.js"
+run_suite "E2E: Dictation"         "$DIR/e2e_dictation.test.js"
 
 echo ""
 echo "════════════════════════════════════════════════════"

@@ -136,6 +136,26 @@ Claude sometimes returns 19 items if the prompt is malformed. The `Save Quiz` no
 
 ---
 
+## Dictation issues
+
+**Bot hangs on "🎤 Распознаю речь..."**
+
+Check the latest execution in the n8n UI. Common causes:
+
+1. **Groq API error 400** — Groq rejects `.oga` files (Telegram's voice format). The `Fix Audio Format` Code node renames `.oga` → `.ogg` before sending. If this node is missing or disconnected, reconnect it between `Download Voice File` and `Whisper STT`.
+
+2. **Groq credential not set** — the `Whisper STT` HTTP Request node must use a `Groq account` credential (type `openAiApi`) with `GROQ_API_KEY`. If it shows "Authorization failed", recreate the credential via n8n UI → Credentials → New → OpenAI API → set the Groq key and base URL `https://api.groq.com/openai`.
+
+3. **No dictation session** — user sent a voice message but no dictation session was active in Redis. The bot silently ignores voice outside of dictation sessions.
+
+**Clear a stuck dictation session:**
+```bash
+docker compose exec redis redis-cli -a $REDIS_PASSWORD \
+  DEL session:USER_TELEGRAM_ID dictation:USER_TELEGRAM_ID
+```
+
+---
+
 ## Check server resources
 
 ```bash
