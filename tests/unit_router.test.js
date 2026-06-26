@@ -165,6 +165,45 @@ for (const node of targetLangNodes) {
     `got ${cond.rightValue}/${cond.operator.operation}`);
 }
 
+// ─── SECTION 10: Mode prompts must propagate native/target language ──────────
+// Regression: "Word"/"Grammar" prompts were hardcoded Russian + hardcoded
+// "English" target; conversation/vocab prompts hardcoded "English teacher".
+// All must be parametrized by the user's native and target language.
+console.log('\n[Unit] Mode prompt language propagation');
+
+const findNode = (name) => wf.nodes.find((n) => n.name === name);
+
+// Word & Grammar prompt nodes must be expression-driven (not a static string).
+const wordPrompt = findNode('Send Word Prompt');
+assert(!!wordPrompt && wordPrompt.parameters.text.startsWith('={{'),
+  'Send Word Prompt uses an expression (localized), not static text');
+assert(wordPrompt.parameters.text.includes('nativeLang'),
+  'Send Word Prompt keys off nativeLang');
+assert(!wordPrompt.parameters.text.includes('Напиши слово которое'),
+  'Send Word Prompt no longer hardcodes Russian');
+
+const grammarPrompt = findNode('Send Grammar Prompt');
+assert(!!grammarPrompt && grammarPrompt.parameters.text.startsWith('={{'),
+  'Send Grammar Prompt uses an expression (localized), not static text');
+assert(grammarPrompt.parameters.text.includes('nativeLang') && grammarPrompt.parameters.text.includes('targetLang'),
+  'Send Grammar Prompt keys off both nativeLang and targetLang');
+assert(!grammarPrompt.parameters.text.includes('предложение на английском'),
+  'Send Grammar Prompt no longer hardcodes "English" target in Russian');
+
+// Claude prep nodes must not hardcode "English teacher" and must cover all langs.
+for (const name of ['Prep Conv Request', 'Prep Grammar Request', 'Prep Vocab Request']) {
+  const jc = findNode(name).parameters.jsCode;
+  assert(!jc.includes('You are an English teacher'), `${name}: no hardcoded "English teacher"`);
+  assert(jc.includes("mg:'Malagasy'"), `${name}: LANG map covers all 82 languages`);
+}
+
+// Conversation prompt must forbid a third/intermediary language (the English-gloss bug).
+const conv = findNode('Prep Conv Request').parameters.jsCode;
+assert(conv.includes('NEVER use any third language'),
+  'Conversation prompt forbids any third/intermediary language');
+assert(conv.includes('do NOT add English translations'),
+  'Conversation prompt explicitly bans unsolicited English glosses');
+
 // ─── Summary ─────────────────────────────────────────────────────────────────
 console.log(`\n${'─'.repeat(50)}`);
 console.log(`Router unit: ${passed} passed, ${failed} failed`);
