@@ -26,6 +26,7 @@ ssl/
 
 # ── Project-specific sensitive files ──────────────────────────────────────────
 task.md
+task2.md
 memory.md
 *.cookies.txt
 
