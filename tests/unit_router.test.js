@@ -143,6 +143,28 @@ assert(out.streak === 7, 'streak from user');
 assert(out.text === 'hello world', 'text normalized');
 assert(out.userId === ALLOWED_ID, 'userId correct');
 
+// ─── SECTION 9: Target-lang IF-node disambiguation (workflow structure) ──────
+// Regression: clicking "Next" on the language picker sends `tl_page_1`. The
+// Router routes it to `target_lang_page`, but the downstream "Is Target Lang?"
+// IF node used `cbData startsWith "tl_"`, which ALSO matches `tl_page_1` and
+// greedily routed it to Save Target Lang → targetLang became "page_1", leaking
+// into the onboarding prompt ("...assess your English at the page_1 level").
+// Fix: "Is Target Lang?" must key off the Router's `route` field, not cbData.
+console.log('\n[Unit] Target-lang IF node disambiguation');
+const fs = require('fs');
+const path = require('path');
+const wf = JSON.parse(fs.readFileSync(path.join(__dirname, '..', 'n8n', 'workflows', '01_webhook_router.json'), 'utf8'));
+const targetLangNodes = wf.nodes.filter((n) => n.name === 'Is Target Lang?');
+assert(targetLangNodes.length > 0, 'Is Target Lang? node exists');
+for (const node of targetLangNodes) {
+  const cond = node.parameters.conditions.conditions[0];
+  assert(cond.leftValue.includes('$json.route'), 'Is Target Lang? checks route (not cbData)',
+    `got leftValue=${cond.leftValue}`);
+  assert(cond.rightValue === 'target_lang' && cond.operator.operation === 'equals',
+    'Is Target Lang? matches route === "target_lang" exactly (so tl_page_* cannot leak)',
+    `got ${cond.rightValue}/${cond.operator.operation}`);
+}
+
 // ─── Summary ─────────────────────────────────────────────────────────────────
 console.log(`\n${'─'.repeat(50)}`);
 console.log(`Router unit: ${passed} passed, ${failed} failed`);

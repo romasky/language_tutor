@@ -1687,11 +1687,11 @@
           "conditions": [
             {
               "id": "c1",
-              "leftValue": "={{ $json.cbData }}",
-              "rightValue": "tl_",
+              "leftValue": "={{ $json.route }}",
+              "rightValue": "target_lang",
               "operator": {
                 "type": "string",
-                "operation": "startsWith"
+                "operation": "equals"
               }
             }
           ],
@@ -6664,11 +6664,11 @@
             "conditions": [
               {
                 "id": "c1",
-                "leftValue": "={{ $json.cbData }}",
-                "rightValue": "tl_",
+                "leftValue": "={{ $json.route }}",
+                "rightValue": "target_lang",
                 "operator": {
                   "type": "string",
-                  "operation": "startsWith"
+                  "operation": "equals"
                 }
               }
             ],
