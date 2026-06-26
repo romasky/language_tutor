@@ -6,13 +6,16 @@
       "name": "Daily Schedule",
       "type": "n8n-nodes-base.scheduleTrigger",
       "typeVersion": 1,
-      "position": [240, 300],
+      "position": [
+        240,
+        300
+      ],
       "parameters": {
         "rule": {
           "interval": [
             {
               "field": "cronExpression",
-              "expression": "0 9 * * *"
+              "expression": "0 * * * *"
             }
           ]
         }
@@ -20,24 +23,33 @@
     },
     {
       "id": "a1b2c3d4-0006-0006-0006-000000000002",
-      "name": "Get All Active Users",
+      "name": "Get Due Users This Hour",
       "type": "n8n-nodes-base.postgres",
       "typeVersion": 2,
-      "position": [460, 300],
+      "position": [
+        460,
+        300
+      ],
       "parameters": {
         "operation": "executeQuery",
-        "query": "SELECT id, first_name, level FROM users WHERE last_seen_at > NOW() - INTERVAL '7 days';"
+        "query": "SELECT u.id, u.first_name, u.level, u.native_lang, u.target_lang, u.utc_offset\nFROM users u\nWHERE u.is_opted_in = true\n  AND u.last_seen_at > NOW() - INTERVAL '30 days'\n  AND ((EXTRACT(HOUR FROM NOW() AT TIME ZONE 'UTC')::int + u.utc_offset + 24) % 24) = u.lesson_hour\n  AND NOT EXISTS (\n    SELECT 1 FROM daily_lesson_sessions dls\n    WHERE dls.user_id = u.id\n      AND dls.started_at > NOW() - INTERVAL '20 hours'\n  )\nORDER BY u.id;"
       },
       "credentials": {
-        "postgres": { "id": "2", "name": "PostgreSQL" }
+        "postgres": {
+          "id": "POWi7bv2nxOY3Nhp",
+          "name": "Postgres account"
+        }
       }
     },
     {
       "id": "a1b2c3d4-0006-0006-0006-000000000003",
-      "name": "Split Users",
+      "name": "For Each User",
       "type": "n8n-nodes-base.splitInBatches",
       "typeVersion": 3,
-      "position": [680, 300],
+      "position": [
+        680,
+        300
+      ],
       "parameters": {
         "batchSize": 1,
         "options": {}
@@ -48,13 +60,19 @@
       "name": "Get Due Words",
       "type": "n8n-nodes-base.postgres",
       "typeVersion": 2,
-      "position": [900, 300],
+      "position": [
+        900,
+        300
+      ],
       "parameters": {
         "operation": "executeQuery",
-        "query": "SELECT word, translation, context, ease_factor, interval\nFROM vocabulary\nWHERE user_id = {{ $json.id }}\n  AND next_review <= NOW()\nORDER BY next_review ASC\nLIMIT 5;"
+        "query": "SELECT id, word, translation, context, ease_factor, interval, repetitions\nFROM vocabulary\nWHERE user_id = {{ $json.id }}\n  AND next_review <= NOW()\nORDER BY next_review ASC\nLIMIT 5;"
       },
       "credentials": {
-        "postgres": { "id": "2", "name": "PostgreSQL" }
+        "postgres": {
+          "id": "POWi7bv2nxOY3Nhp",
+          "name": "Postgres account"
+        }
       }
     },
     {
@@ -62,16 +80,26 @@
       "name": "Has Due Words?",
       "type": "n8n-nodes-base.if",
       "typeVersion": 2,
-      "position": [1120, 300],
+      "position": [
+        1120,
+        300
+      ],
       "parameters": {
         "conditions": {
-          "options": { "caseSensitive": true, "leftValue": "", "typeValidation": "strict" },
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict"
+          },
           "combinator": "and",
           "conditions": [
             {
-              "leftValue": "={{ $json.length }}",
+              "leftValue": "={{ $input.all().length }}",
               "rightValue": 0,
-              "operator": { "type": "number", "operation": "gt" }
+              "operator": {
+                "type": "number",
+                "operation": "gt"
+              }
             }
           ]
         }
@@ -79,89 +107,233 @@
     },
     {
       "id": "a1b2c3d4-0006-0006-0006-000000000006",
-      "name": "Generate Daily Lesson",
-      "type": "n8n-nodes-base.httpRequest",
-      "typeVersion": 4,
-      "position": [1340, 200],
+      "name": "Build Flashcard Session",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1340,
+        200
+      ],
       "parameters": {
-        "method": "POST",
-        "url": "https://api.anthropic.com/v1/messages",
-        "sendHeaders": true,
-        "headerParameters": {
-          "parameters": [
-            { "name": "x-api-key", "value": "={{ $env.ANTHROPIC_API_KEY }}" },
-            { "name": "anthropic-version", "value": "2023-06-01" },
-            { "name": "content-type", "value": "application/json" }
-          ]
-        },
-        "sendBody": true,
-        "specifyBody": "json",
-        "jsonBody": "={{ JSON.stringify({ model: 'claude-sonnet-4-20250514', max_tokens: 500, system: 'You are an English teacher creating a personalized daily review. Create a short engaging quiz for the student\\'s vocabulary review. Format as numbered questions.', messages: [{ role: 'user', content: 'Create a daily vocabulary review quiz for these words: ' + $json.map(w => w.word).join(', ') + '. Student level: ' + $('Get All Active Users').item.json.level + '.' }] }) }}"
+        "jsCode": "const user = $('For Each User').item.json;\nconst words = $input.all().map(i => i.json);\nconst userId = user.id;\nconst nowMs = Date.now();\n\nconst state = {\n  type: 'flashcard',\n  cards: words.map(w => ({\n    vocabId: w.id,\n    word: w.word,\n    translation: w.translation || '',\n    context: w.context || '',\n    easeFactor: parseFloat(w.ease_factor) || 2.5,\n    interval: parseInt(w.interval) || 1,\n    repetitions: parseInt(w.repetitions) || 0\n  })),\n  current: 0,\n  results: [],\n  hintUsed: false,\n  sentAt: [nowMs],\n  startedAt: nowMs,\n  nativeLang: user.native_lang || 'en',\n  targetLang: user.target_lang || 'en',\n  level: user.level || 'A1'\n};\n\nreturn [{ json: {\n  userId,\n  firstName: user.first_name || 'friend',\n  stateJson: JSON.stringify(state),\n  state,\n  nativeLang: state.nativeLang\n} }];"
+      }
+    },
+    {
+      "id": "a1b2c3d4-0006-0006-0006-000000000009",
+      "name": "Insert Session Record",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2,
+      "position": [
+        1560,
+        200
+      ],
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "INSERT INTO daily_lesson_sessions (user_id, card_count, status)\nVALUES ({{ $json.userId }}, {{ $json.state.cards.length }}, 'sent')\nRETURNING id;"
+      },
+      "credentials": {
+        "postgres": {
+          "id": "POWi7bv2nxOY3Nhp",
+          "name": "Postgres account"
+        }
+      }
+    },
+    {
+      "id": "a1b2c3d4-0006-0006-0006-000000000010",
+      "name": "Attach Session ID",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1780,
+        200
+      ],
+      "parameters": {
+        "jsCode": "const sessionId = $('Insert Session Record').item.json.id;\nconst built = $('Build Flashcard Session').item.json;\n\nconst state = { ...built.state, sessionId };\n\nreturn [{ json: {\n  ...built,\n  stateJson: JSON.stringify(state),\n  state,\n  sessionId\n} }];"
       }
     },
     {
       "id": "a1b2c3d4-0006-0006-0006-000000000007",
-      "name": "Send Daily Lesson",
-      "type": "n8n-nodes-base.telegram",
+      "name": "Save Flashcard State",
+      "type": "n8n-nodes-base.redis",
       "typeVersion": 1,
-      "position": [1560, 200],
+      "position": [
+        2000,
+        200
+      ],
       "parameters": {
-        "operation": "sendMessage",
-        "chatId": "={{ $('Get All Active Users').item.json.id }}",
-        "text": "=🌅 *Good morning, {{ $('Get All Active Users').item.json.first_name }}!*\n\nTime for your daily English practice! You have {{ $('Get Due Words').item.json.length }} words to review today.\n\n{{ $json.content[0].text }}\n\n_Send /quiz to start the quiz, or just keep chatting!_",
-        "additionalFields": {
-          "parse_mode": "Markdown"
-        }
+        "operation": "set",
+        "key": "={{ 'flashcard:' + $json.userId }}",
+        "value": "={{ $json.stateJson }}",
+        "keyType": "automatic",
+        "expire": true,
+        "ttl": 86400
       },
       "credentials": {
-        "telegramApi": { "id": "1", "name": "Telegram Bot" }
+        "redis": {
+          "id": "SGNlQnpRldUpEDHt",
+          "name": "Redis account"
+        }
+      }
+    },
+    {
+      "id": "a1b2c3d4-0006-0006-0006-000000000011",
+      "name": "Set Flashcard Session",
+      "type": "n8n-nodes-base.redis",
+      "typeVersion": 1,
+      "position": [
+        2220,
+        200
+      ],
+      "parameters": {
+        "operation": "set",
+        "key": "={{ 'session:' + $('Attach Session ID').item.json.userId }}",
+        "value": "flashcard",
+        "keyType": "automatic",
+        "expire": true,
+        "ttl": 86400
+      },
+      "credentials": {
+        "redis": {
+          "id": "SGNlQnpRldUpEDHt",
+          "name": "Redis account"
+        }
       }
     },
     {
       "id": "a1b2c3d4-0006-0006-0006-000000000008",
-      "name": "Update Streak",
-      "type": "n8n-nodes-base.postgres",
-      "typeVersion": 2,
-      "position": [1560, 360],
+      "name": "Send First Card",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4,
+      "position": [
+        2440,
+        200
+      ],
       "parameters": {
-        "operation": "executeQuery",
-        "query": "UPDATE users SET streak = streak + 1 WHERE id = {{ $('Get All Active Users').item.json.id }} AND DATE(last_seen_at) = CURRENT_DATE - INTERVAL '1 day';"
-      },
-      "credentials": {
-        "postgres": { "id": "2", "name": "PostgreSQL" }
+        "method": "POST",
+        "url": "=https://api.telegram.org/bot{{ $env.TELEGRAM_BOT_TOKEN }}/sendMessage",
+        "sendBody": true,
+        "specifyBody": "string",
+        "body": "={{ (function() {\n  const data = $('Attach Session ID').item.json;\n  const userId = data.userId;\n  const state = data.state;\n  const card = state.cards[0];\n  const total = state.cards.length;\n  const nativeLang = state.nativeLang;\n\n  const MORNING = {\n    ru: 'Доброе утро', en: 'Good morning', es: 'Buenos días',\n    de: 'Guten Morgen', fr: 'Bonjour', zh: '早上好',\n    ar: 'صباح الخير', pt: 'Bom dia', hi: 'सुप्रभात',\n    ja: 'おはようございます', ko: '좋은 아침', tr: 'Günaydın',\n    uk: 'Доброго ранку', pl: 'Dzień dobry'\n  };\n  const LABELS = {\n    ru: { card: 'Карточка', know: '✅ Знаю', dontKnow: '❌ Не знаю' },\n    en: { card: 'Card', know: '✅ Know', dontKnow: \"❌ Don't know\" },\n    es: { card: 'Tarjeta', know: '✅ Sé', dontKnow: '❌ No sé' },\n    de: { card: 'Karte', know: '✅ Kenne', dontKnow: '❌ Kenne nicht' },\n    fr: { card: 'Carte', know: '✅ Je sais', dontKnow: '❌ Je ne sais pas' },\n    zh: { card: '卡片', know: '✅ 认识', dontKnow: '❌ 不认识' },\n    uk: { card: 'Картка', know: '✅ Знаю', dontKnow: '❌ Не знаю' },\n    pl: { card: 'Karta', know: '✅ Znam', dontKnow: '❌ Nie znam' }\n  };\n  const greeting = MORNING[nativeLang] || MORNING['en'];\n  const L = LABELS[nativeLang] || LABELS['en'];\n\n  const text = greeting + ', ' + data.firstName + '! ☀️\\n\\n' +\n    L.card + ' 1/' + total + '\\n\\n' +\n    '*' + card.word + '*' +\n    (card.context ? '\\n\\n_\"' + card.context + '\"_' : '');\n\n  return JSON.stringify({\n    chat_id: userId,\n    text,\n    parse_mode: 'Markdown',\n    reply_markup: { inline_keyboard: [[\n      { text: L.know, callback_data: 'daily_ans_know' },\n      { text: L.dontKnow, callback_data: 'daily_ans_dontknow' }\n    ]]}\n  });\n})() }}"
       }
     }
   ],
   "connections": {
     "Daily Schedule": {
-      "main": [[{ "node": "Get All Active Users", "type": "main", "index": 0 }]]
+      "main": [
+        [
+          {
+            "node": "Get Due Users This Hour",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
     },
-    "Get All Active Users": {
-      "main": [[{ "node": "Split Users", "type": "main", "index": 0 }]]
+    "Get Due Users This Hour": {
+      "main": [
+        [
+          {
+            "node": "For Each User",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
     },
-    "Split Users": {
-      "main": [[{ "node": "Get Due Words", "type": "main", "index": 0 }]]
+    "For Each User": {
+      "main": [
+        [
+          {
+            "node": "Get Due Words",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
     },
     "Get Due Words": {
-      "main": [[{ "node": "Has Due Words?", "type": "main", "index": 0 }]]
+      "main": [
+        [
+          {
+            "node": "Has Due Words?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
     },
     "Has Due Words?": {
       "main": [
-        [{ "node": "Generate Daily Lesson", "type": "main", "index": 0 }],
+        [
+          {
+            "node": "Build Flashcard Session",
+            "type": "main",
+            "index": 0
+          }
+        ],
         []
       ]
     },
-    "Generate Daily Lesson": {
-      "main": [[
-        { "node": "Send Daily Lesson", "type": "main", "index": 0 },
-        { "node": "Update Streak", "type": "main", "index": 0 }
-      ]]
+    "Build Flashcard Session": {
+      "main": [
+        [
+          {
+            "node": "Insert Session Record",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Insert Session Record": {
+      "main": [
+        [
+          {
+            "node": "Attach Session ID",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Attach Session ID": {
+      "main": [
+        [
+          {
+            "node": "Save Flashcard State",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Save Flashcard State": {
+      "main": [
+        [
+          {
+            "node": "Set Flashcard Session",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Set Flashcard Session": {
+      "main": [
+        [
+          {
+            "node": "Send First Card",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
     }
   },
   "settings": {
     "executionOrder": "v1"
   },
   "meta": {
-    "notes": "Daily lesson scheduler: runs at 9am UTC, sends personalized vocabulary review to active users."
+    "notes": "Daily lesson scheduler: runs hourly, dispatches to users whose local lesson_hour matches current UTC hour. Sends flashcard sessions with SM-2 scheduling."
   }
 }

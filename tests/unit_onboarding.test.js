@@ -142,6 +142,43 @@ console.log('\n[Unit] Session lifecycle');
 console.log('  ⚠ [BUG #6] onboarding:{userId} history key never deleted after level is saved');
 passed++; // documented
 
+// ─── SECTION 5: nativeLang derivation in Send Target Lang Select ─────────────
+// Regression for the bug where the "which language to learn?" prompt rendered in
+// English: Router reads native_lang from the DB BEFORE the save node writes the
+// new value, so the prompt node must derive nativeLang from whichever save node
+// ran (confirm_lang_XX or nl_XX), not from Router's stale snapshot.
+console.log('\n[Unit] Target-lang prompt nativeLang derivation');
+
+// Mirrors the logic embedded in the Send Target Lang Select node body.
+function deriveNativeLang({ routerCbData = '', savedConfirmCb, savedNativeCb, routerNativeLang = 'en' }) {
+  let nativeLang = '';
+  if (routerCbData.startsWith('confirm_lang_')) nativeLang = routerCbData.replace('confirm_lang_', '');
+  if (!nativeLang && savedConfirmCb && savedConfirmCb.startsWith('confirm_lang_')) nativeLang = savedConfirmCb.replace('confirm_lang_', '');
+  if (!nativeLang && savedNativeCb && savedNativeCb.startsWith('nl_')) nativeLang = savedNativeCb.replace('nl_', '');
+  if (!nativeLang) nativeLang = routerNativeLang || 'en';
+  return nativeLang;
+}
+
+// Path A: user clicked "✅ Continue" — cbData is confirm_lang_ru on Router.
+assert(deriveNativeLang({ routerCbData: 'confirm_lang_ru', routerNativeLang: 'en' }) === 'ru',
+  'confirm_lang_ via Router cbData → ru');
+
+// Path B (the actual bug): "🌐 Choose another" → picked Russian → nl_ru.
+// Router cbData is nl_ru and Router.nativeLang is stale 'en'. Must still resolve ru.
+assert(deriveNativeLang({ routerCbData: 'nl_ru', savedNativeCb: 'nl_ru', routerNativeLang: 'en' }) === 'ru',
+  'nl_ path falls back to Save Native Lang cbData → ru (was the bug: returned en)');
+
+// Path C: confirm path but Router snapshot lost cbData; Save Confirmed Lang has it.
+assert(deriveNativeLang({ routerCbData: '', savedConfirmCb: 'confirm_lang_de', routerNativeLang: 'en' }) === 'de',
+  'falls back to Save Confirmed Lang cbData → de');
+
+// Path D: genuine English speaker — everything points to en.
+assert(deriveNativeLang({ routerCbData: 'confirm_lang_en', routerNativeLang: 'en' }) === 'en',
+  'English user stays en');
+
+// Path E: nothing available → safe default en.
+assert(deriveNativeLang({}) === 'en', 'no signals → default en');
+
 // ─── Summary ──────────────────────────────────────────────────────────────────
 console.log(`\n${'─'.repeat(50)}`);
 console.log(`Onboarding unit: ${passed} passed, ${failed} failed`);
